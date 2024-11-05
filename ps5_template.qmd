@@ -26,10 +26,10 @@ output:
 ## Submission Steps (10 pts)
 1. This problem set is a paired problem set.
 2. Play paper, scissors, rock to determine who goes first. Call that person *Partner 1*.
-    - Partner 1 (name and cnet ID):
+    - Partner 1 (name and cnet ID): Guillermina Marto - gmarto
     - Partner 2 (name and cnet ID):
 3. Partner 1 will accept the `ps5` and then share the link it creates with their partner. You can only share it with one partner so you will not be able to change it after your partner has accepted. 
-4. "This submission is our work alone and complies with the 30538 integrity policy." Add your initials to indicate your agreement: \*\*\_\_\*\* \*\*\_\_\*\*
+4. "This submission is our work alone and complies with the 30538 integrity policy." Add your initials to indicate your agreement: \*\*GM\*\* \*\*\_\_\*\*
 5. "I have uploaded the names of anyone else other than my partner and I worked with on the problem set **[here](https://docs.google.com/forms/d/185usrCREQaUbvAXpWhChkjghdGgmAZXA3lPWpXLLsts/edit)**"  (1 point)
 6. Late coins used this pset: \*\*\_\_\*\* Late coins left after submission: \*\*\_\_\*\*
 7. Knit your `ps5.qmd` to an PDF file to make `ps5.pdf`, 
@@ -56,6 +56,58 @@ alt.renderers.enable("png")
 ### 1. Scraping (PARTNER 1)
 
 ```{python}
+import requests
+from bs4 import BeautifulSoup
+import pandas as pd
+
+# URL of the HHS OIG Enforcement Actions page
+url = "https://oig.hhs.gov/fraud/enforcement/"
+
+# Send a GET request to the page
+response = requests.get(url)
+response.raise_for_status()
+
+# Parse the HTML with BeautifulSoup
+soup = BeautifulSoup(response.text, "html.parser")
+
+# Lists to store the extracted data
+titles = []
+dates = []
+categories = []
+links = []
+
+# Find all enforcement action items
+for item in soup.select("li.usa-card"):
+    # Extract the title
+    title_element = item.select_one("h2.usa-card__heading a")
+    if title_element:
+        titles.append(title_element.get_text(strip=True))
+        links.append("https://oig.hhs.gov" + title_element["href"])
+    else:
+        titles.append(None)
+        links.append(None)
+    
+    # Extract the date
+    date_element = item.select_one("span.text-base-dark")
+    dates.append(date_element.get_text(strip=True) if date_element else None)
+    
+    # Extract the category
+    category_element = item.select_one("ul li.usa-tag")
+    categories.append(category_element.get_text(strip=True) if category_element else None)
+
+# Create a DataFrame with the extracted data
+data = pd.DataFrame({
+    "Title": titles,
+    "Date": dates,
+    "Category": categories,
+    "Link": links
+})
+
+# Save the DataFrame to a CSV file
+data.to_csv("hhs_oig_enforcement_actions.csv", index=False)
+
+# Display the DataFrame
+print(data.head())
 
 ```
 
@@ -63,6 +115,34 @@ alt.renderers.enable("png")
 ### 2. Crawling (PARTNER 1)
 
 ```{python}
+import time 
+
+# Initialize an empty list to store agency names
+agencies = []
+
+# Loop through each link in the DataFrame to extract agency information
+for link in data["Link"]:
+    action_response = requests.get(link)
+    action_response.raise_for_status()
+    action_soup = BeautifulSoup(action_response.text, "html.parser")
+    
+    # Extract agency information - usually the second <li> element
+    agency_element = action_soup.select("ul.usa-list--unstyled li")
+    if len(agency_element) > 1:
+        agency_text = agency_element[1].get_text(strip=True)
+        agency_name = agency_text.split(":", 1)[-1].strip()  # Extract text after "Agency:"
+        agencies.append(agency_name)
+    else:
+        agencies.append(None)
+
+    # Optional: Pause to avoid too many rapid requests
+    time.sleep(1)
+
+# Update the DataFrame with the new 'Agency' column
+data["Agency"] = agencies
+
+# Print the first few rows to verify
+print(data.head())
 
 ```
 
