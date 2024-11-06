@@ -27,7 +27,7 @@ output:
 1. This problem set is a paired problem set.
 2. Play paper, scissors, rock to determine who goes first. Call that person *Partner 1*.
     - Partner 1 (name and cnet ID): Guillermina Marto - gmarto
-    - Partner 2 (name and cnet ID):
+    - Partner 2 (name and cnet ID): Alejandra Silva - aosilva
 3. Partner 1 will accept the `ps5` and then share the link it creates with their partner. You can only share it with one partner so you will not be able to change it after your partner has accepted. 
 4. "This submission is our work alone and complies with the 30538 integrity policy." Add your initials to indicate your agreement: \*\*GM\*\* \*\*\_\_\*\*
 5. "I have uploaded the names of anyone else other than my partner and I worked with on the problem set **[here](https://docs.google.com/forms/d/185usrCREQaUbvAXpWhChkjghdGgmAZXA3lPWpXLLsts/edit)**"  (1 point)
@@ -153,9 +153,154 @@ print(data.head())
 * a. Pseudo-Code (PARTNER 2)
 
 
+1. **Define the Function** `scrape_enforcement_actions(start_month, start_year)`:
+   - **Inputs**: 
+     - `start_month`: The month to start scraping from (1 to 12).
+     - `start_year`: The year to start scraping from (should be >= 2013).
+
+2. **Initial Validity Check**:
+   - If `start_year` is less than 2013, **print a message**: “Please enter a year >= 2013, as data before 2013 is not available.” 
+   - **Exit the function** if the condition is not met.
+
+3. **Setup**:
+   - Define the **base URL** for the HHS OIG enforcement actions page.
+   - **Initialize lists** to store scraped data for each action (e.g., `titles`, `dates`, `categories`, `links`).
+   - Set `page = 1` to start from the first page of the site.
+   - Get the **current date** to compare against as the end condition.
+
+4. **Loop Through Pages Until Date Condition is Met**:
+   - Start a `while` loop:
+     - **Construct URL** with the current `page` number.
+     - **Request the page** content and parse it with `BeautifulSoup`.
+     - **Find all enforcement action items** on the page (e.g., by selecting specific HTML elements).
+
+     - **Check for End of Pages**:
+       - If no items are found (end of content), **break** the loop.
+
+5. **Extract Data for Each Action**:
+   - For each item on the page:
+     - Extract and **store the title**, **link**, **date**, and **category**.
+     - **Parse the date** to check if it’s within the specified `start_year` and `start_month`.
+       - If the action’s date is earlier than the specified date, **break** the loop to stop scraping.
+
+6. **Append Data to Lists**:
+   - Append the extracted data for title, date, category, and link to the respective lists.
+
+7. **Move to the Next Page**:
+   - Increment `page` by 1 to load the next set of actions.
+   - Use `time.sleep(1)` to pause between requests to avoid overloading the server.
+
+8. **Create a DataFrame and Save to CSV**:
+   - After exiting the loop, **create a DataFrame** from the lists.
+   - **Save** the DataFrame to a CSV file with a name format like `enforcement_actions_<year>_<month>.csv`.
+
+9. **End Function**:
+   - Print a confirmation message that data has been saved.
+
+
+This structure uses a `while` loop to handle pagination dynamically and ensures the scraper stops early if it encounters data before the specified start date. 
+
 * b. Create Dynamic Scraper (PARTNER 2)
 
+
 ```{python}
+
+import requests
+from bs4 import BeautifulSoup
+import pandas as pd
+import time
+
+def scrape_enforcement_actions(start_month, start_year):
+    """
+    Scrapes HHS OIG enforcement actions, including title, date, category, link, and agency name.
+    Parameters:
+        start_month (int): The starting month (1-12).
+        start_year (int): The starting year (must be >= 2013).
+    Returns:
+        pd.DataFrame: A DataFrame with columns: Title, Date, Category, Link, and Agency.
+    """
+    # Check if the input year is valid (>= 2013)
+    if start_year < 2013:
+        print("Please enter a year >= 2013, as data before 2013 is not available.")
+        return
+
+    # Base URL of the HHS OIG Enforcement Actions page
+    base_url = "https://oig.hhs.gov/fraud/enforcement/"
+    all_titles, all_dates, all_categories, all_links, all_agencies = [], [], [], [], []
+    
+    # Send a GET request to the main page
+    response = requests.get(base_url)
+    response.raise_for_status()
+    soup = BeautifulSoup(response.text, "html.parser")
+
+    # Extract main page data (Title, Date, Category, Link)
+    for item in soup.select("li.usa-card"):
+        # Extract title and link
+        title_element = item.select_one("h2.usa-card__heading a")
+        title = title_element.get_text(strip=True) if title_element else None
+        link = "https://oig.hhs.gov" + title_element["href"] if title_element else None
+        all_titles.append(title)
+        all_links.append(link)
+
+        # Extract date
+        date_element = item.select_one("span.text-base-dark")
+        date_text = date_element.get_text(strip=True) if date_element else None
+        all_dates.append(date_text)
+
+        # Extract category
+        category_element = item.select_one("ul li.usa-tag")
+        category = category_element.get_text(strip=True) if category_element else None
+        all_categories.append(category)
+
+    # Loop through each link to extract the agency information
+    for link in all_links:
+        if link:
+            action_response = requests.get(link)
+            action_response.raise_for_status()
+            action_soup = BeautifulSoup(action_response.text, "html.parser")
+
+            # Extract agency information
+            agency_element = action_soup.select("ul.usa-list--unstyled li")
+            if len(agency_element) > 1:
+                agency_text = agency_element[1].get_text(strip=True)
+                agency_name = agency_text.split(":", 1)[-1].strip()  # Extract text after "Agency:"
+                all_agencies.append(agency_name)
+            else:
+                all_agencies.append(None)
+            
+            # Optional: Pause to avoid too many rapid requests
+            time.sleep(1)
+        else:
+            all_agencies.append(None)
+
+    # Create a DataFrame with the extracted data
+    data = pd.DataFrame({
+        "Title": all_titles,
+        "Date": all_dates,
+        "Category": all_categories,
+        "Link": all_links,
+        "Agency": all_agencies
+    })
+
+    # Save the DataFrame to a CSV file
+    filename = f"enforcement_actions_{start_year}_{start_month}.csv"
+    data.to_csv(filename, index=False)
+    print(f"Data saved to {filename}")
+
+    return data
+
+# Example usage:
+data = scrape_enforcement_actions(1, 2023)
+print(data.head())
+
+# Display the number of enforcement actions collected
+
+print(f"Total enforcement actions collected: {len(data)}")
+
+data["Date"] = pd.to_datetime(data["Date"], errors="coerce")
+earliest_action = data.sort_values("Date").iloc[0]
+print("Earliest enforcement action collected:")
+print(earliest_action)
 
 ```
 
@@ -170,6 +315,38 @@ print(data.head())
 ### 1. Plot the number of enforcement actions over time (PARTNER 2)
 
 ```{python}
+import altair as alt
+import pandas as pd
+
+data = pd.read_csv("enforcement_actions_2021_1.csv")
+
+# Convert 'Date' column to datetime format to enable time-based operations
+data["Date"] = pd.to_datetime(data["Date"], errors="coerce")
+
+# Drop rows with NaT in Date (if any) after conversion
+data = data.dropna(subset=["Date"])
+
+# Extract month-year for aggregation
+data["Year_Month"] = data["Date"].dt.to_period("M")
+
+# Group by month-year and count the number of actions
+monthly_counts = data.groupby("Year_Month").size().reset_index(name="Count")
+
+# Convert Year_Month to datetime for Altair plotting
+monthly_counts["Year_Month"] = monthly_counts["Year_Month"].dt.to_timestamp()
+
+# Plot the line chart using Altair
+chart = alt.Chart(monthly_counts).mark_line().encode(
+    x=alt.X("Year_Month:T", title="Month and Year"),
+    y=alt.Y("Count:Q", title="Number of Enforcement Actions"),
+    tooltip=["Year_Month:T", "Count:Q"]
+).properties(
+    title="Number of Enforcement Actions Over Time (Aggregated by Month-Year)",
+    width=600,
+    height=400
+).interactive()
+
+chart
 
 ```
 
@@ -199,7 +376,52 @@ print(data.head())
 ### 2. Map by District (PARTNER 2)
 
 ```{python}
+import geopandas as gpd
+import pandas as pd
+import matplotlib.pyplot as plt
+import re
 
+# Load the enforcement actions data
+data = pd.read_csv("enforcement_actions_2021_1.csv")
+
+# Filter for US Attorney District-level agencies by looking for "District" in the Agency column
+district_data = data[data["Agency"].str.contains("District", na=False)].copy()
+
+# Keep only the last three words in the District column of enforcement data
+district_data["District"] = district_data["Agency"].apply(lambda x: ' '.join(x.split()[-3:]))
+
+# Count the number of enforcement actions per district
+district_counts = district_data["District"].value_counts().reset_index()
+district_counts.columns = ["District", "Count"]
+
+# Update the path to the .shp file with either double backslashes or a raw string
+shapefile_path = r'US Attorney Districts Shapefile simplified_20241105\geo_export_863694bc-2e85-424f-96a2-1598bf583e4c.shp'
+
+# Load the shapefile using GeoPandas
+district_shapefile = gpd.read_file(shapefile_path)
+
+# Remove the first word from each entry in the judicial_d column
+district_shapefile["cleaned_judicial_d"] = district_shapefile["judicial_d"].apply(lambda x: ' '.join(x.split()[1:]))
+
+# Merge the district counts with the shapefile data on 'cleaned_judicial_d' and 'District'
+district_map_data = district_shapefile.merge(district_counts, left_on="cleaned_judicial_d", right_on="District", how="left")
+
+# Fill NaN values in the 'Count' column with 0 for districts with no actions
+district_map_data["Count"].fillna(0, inplace=True)
+
+
+# Plot the choropleth map with focus on continental U.S.
+fig, ax = plt.subplots(1, 1, figsize=(12, 8))
+district_map_data.plot(column="Count", cmap="Reds", linewidth=0.8, ax=ax, edgecolor="0.8", legend=True,
+                       legend_kwds={"label": "Number of Enforcement Actions",
+                                    "orientation": "horizontal"})
+
+# Set axis limits to focus on the continental U.S.
+ax.set_xlim([-130, -60])  # Longitude range for continental U.S.
+ax.set_ylim([20, 55])     # Latitude range for continental U.S.
+
+ax.set_title("Number of Enforcement Actions by US Attorney Districts", fontsize=15)
+plt.show()
 ```
 
 ## Extra Credit
