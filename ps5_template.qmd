@@ -58,7 +58,6 @@ alt.renderers.enable("png")
 ```{python}
 import requests
 from bs4 import BeautifulSoup
-import pandas as pd
 
 # URL of the HHS OIG Enforcement Actions page
 url = "https://oig.hhs.gov/fraud/enforcement/"
@@ -204,13 +203,10 @@ This structure uses a `while` loop to handle pagination dynamically and ensures 
 
 
 ```{python}
-
-import requests
-from bs4 import BeautifulSoup
-import pandas as pd
-import time
+from datetime import datetime
 
 def scrape_enforcement_actions(start_month, start_year):
+    start_date = datetime(start_year, start_month, 1)
     """
     Scrapes HHS OIG enforcement actions, including title, date, category, link, and agency name.
     Parameters:
@@ -227,51 +223,64 @@ def scrape_enforcement_actions(start_month, start_year):
     # Base URL of the HHS OIG Enforcement Actions page
     base_url = "https://oig.hhs.gov/fraud/enforcement/"
     all_titles, all_dates, all_categories, all_links, all_agencies = [], [], [], [], []
-    
-    # Send a GET request to the main page
-    response = requests.get(base_url)
-    response.raise_for_status()
-    soup = BeautifulSoup(response.text, "html.parser")
+    page = 1
+    stop_scraping = False
 
-    # Extract main page data (Title, Date, Category, Link)
-    for item in soup.select("li.usa-card"):
-        # Extract title and link
-        title_element = item.select_one("h2.usa-card__heading a")
-        title = title_element.get_text(strip=True) if title_element else None
-        link = "https://oig.hhs.gov" + title_element["href"] if title_element else None
-        all_titles.append(title)
-        all_links.append(link)
+    while not stop_scraping:
+        # Send a GET request to the page
+        response = requests.get(f"{base_url}?page={page}")
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
 
-        # Extract date
-        date_element = item.select_one("span.text-base-dark")
-        date_text = date_element.get_text(strip=True) if date_element else None
-        all_dates.append(date_text)
+        # Extract main page data (Title, Date, Category, Link)
+        for item in soup.select("li.usa-card"):
+            # Extract title and link
+            title_element = item.select_one("h2.usa-card__heading a")
+            title = title_element.get_text(strip=True) if title_element else None
+            link = "https://oig.hhs.gov" + title_element["href"] if title_element else None
 
-        # Extract category
-        category_element = item.select_one("ul li.usa-tag")
-        category = category_element.get_text(strip=True) if category_element else None
-        all_categories.append(category)
+            # Extract date and convert it to datetime
+            date_element = item.select_one("span.text-base-dark")
+            date_text = date_element.get_text(strip=True) if date_element else None
+            date_obj = datetime.strptime(date_text, "%B %d, %Y") if date_text else None
 
-    # Loop through each link to extract the agency information
-    for link in all_links:
-        if link:
-            action_response = requests.get(link)
-            action_response.raise_for_status()
-            action_soup = BeautifulSoup(action_response.text, "html.parser")
+            # Stop if the date is before start_date
+            if date_obj and date_obj < start_date:
+                stop_scraping = True
+                break
 
-            # Extract agency information
-            agency_element = action_soup.select("ul.usa-list--unstyled li")
-            if len(agency_element) > 1:
-                agency_text = agency_element[1].get_text(strip=True)
-                agency_name = agency_text.split(":", 1)[-1].strip()  # Extract text after "Agency:"
-                all_agencies.append(agency_name)
-            else:
-                all_agencies.append(None)
-            
-            # Optional: Pause to avoid too many rapid requests
-            time.sleep(1)
-        else:
-            all_agencies.append(None)
+            # Extract category
+            category_element = item.select_one("ul li.usa-tag")
+            category = category_element.get_text(strip=True) if category_element else None
+
+            # Append data to lists, including placeholders for missing agency data
+            all_titles.append(title)
+            all_dates.append(date_text)
+            all_categories.append(category)
+            all_links.append(link)
+            all_agencies.append(None)  # Placeholder for agency, to be updated later if available
+
+        # Loop through each link to extract the agency information
+        for i, link in enumerate(all_links):
+            if all_agencies[i] is None and link:  # Check if agency info was already added for this entry
+                action_response = requests.get(link)
+                action_response.raise_for_status()
+                action_soup = BeautifulSoup(action_response.text, "html.parser")
+
+                # Extract agency information
+                agency_element = action_soup.select("ul.usa-list--unstyled li")
+                if len(agency_element) > 1:
+                    agency_text = agency_element[1].get_text(strip=True)
+                    agency_name = agency_text.split(":", 1)[-1].strip()  # Extract text after "Agency:"
+                    all_agencies[i] = agency_name
+                else:
+                    all_agencies[i] = None
+                
+                # Optional: Pause to avoid too many rapid requests
+                time.sleep(1)
+
+        # Go to the next page
+        page += 1
 
     # Create a DataFrame with the extracted data
     data = pd.DataFrame({
@@ -294,7 +303,6 @@ data = scrape_enforcement_actions(1, 2023)
 print(data.head())
 
 # Display the number of enforcement actions collected
-
 print(f"Total enforcement actions collected: {len(data)}")
 
 data["Date"] = pd.to_datetime(data["Date"], errors="coerce")
@@ -304,10 +312,24 @@ print(earliest_action)
 
 ```
 
+
+
+
 * c. Test Partner's Code (PARTNER 1)
 
 ```{python}
+# Collect data from January 2021 to today
+data = scrape_enforcement_actions(1, 2021)
 
+# Check the number of enforcement actions collected
+
+print(f"Total enforcement actions collected: {len(data)}")
+
+# Display the earliest enforcement action by date
+data["Date"] = pd.to_datetime(data["Date"], errors="coerce")
+earliest_action = data.sort_values("Date").iloc[0]
+print("Earliest enforcement action collected:")
+print(earliest_action)
 ```
 
 ## Step 3: Plot data based on scraped data
@@ -316,7 +338,6 @@ print(earliest_action)
 
 ```{python}
 import altair as alt
-import pandas as pd
 
 data = pd.read_csv("enforcement_actions_2021_1.csv")
 
@@ -356,11 +377,76 @@ chart
 
 ```{python}
 
+# Filter for specific categories
+categories_of_interest = ["Criminal and Civil Actions", "State Enforcement Agencies"]
+filtered_data = data[data["Category"].isin(categories_of_interest)]
+
+# Group by month-year and category, then count the number of actions
+monthly_category_counts = (
+    filtered_data.groupby(["Year_Month", "Category"])
+    .size()
+    .reset_index(name="Count")
+)
+
+# Convert Year_Month to datetime for plotting
+monthly_category_counts["Year_Month"] = monthly_category_counts["Year_Month"].dt.to_timestamp()
+
+# Plot the line chart by category
+category_chart = alt.Chart(monthly_category_counts).mark_line().encode(
+    x=alt.X("Year_Month:T", title="Month and Year"),
+    y=alt.Y("Count:Q", title="Number of Enforcement Actions"),
+    color="Category",
+    tooltip=["Year_Month:T", "Category", "Count"]
+).properties(
+    title="Enforcement Actions Over Time by Category",
+    width=600,
+    height=400
+).interactive()
+
+category_chart
+
 ```
 
 * based on five topics
 
 ```{python}
+# Define five specific topics to categorize actions
+topics_of_interest = [
+    "Criminal and Civil Actions",
+    "State Enforcement Agencies",
+    "Fraud Self-Disclosures",
+    "Grant and Contractor Fraud Self-Disclosures",
+    "Medicare Fraud Strike Force"
+]
+
+# Filter data for these topics
+topic_filtered_data = data[data["Category"].isin(topics_of_interest)]
+
+# Group by month-year and topic, then count the actions
+monthly_topic_counts = (
+    topic_filtered_data.groupby(["Year_Month", "Category"])
+    .size()
+    .reset_index(name="Count")
+)
+
+# Convert Year_Month to datetime for plotting
+monthly_topic_counts["Year_Month"] = monthly_topic_counts["Year_Month"].dt.to_timestamp()
+
+# Plot the line chart by topic
+topic_chart = alt.Chart(monthly_topic_counts).mark_line().encode(
+    x=alt.X("Year_Month:T", title="Month and Year"),
+    y=alt.Y("Count:Q", title="Number of Enforcement Actions"),
+    color="Category",
+    tooltip=["Year_Month:T", "Category", "Count"]
+).properties(
+    title="Enforcement Actions Over Time by Topic",
+    width=600,
+    height=400
+).interactive()
+
+topic_chart
+
+
 
 ```
 
@@ -377,7 +463,6 @@ chart
 
 ```{python}
 import geopandas as gpd
-import pandas as pd
 import matplotlib.pyplot as plt
 import re
 
