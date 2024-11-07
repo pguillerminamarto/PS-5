@@ -191,7 +191,7 @@ print(data.head())
 
 8. **Create a DataFrame and Save to CSV**:
    - After exiting the loop, **create a DataFrame** from the lists.
-   - **Save** the DataFrame to a CSV file with a name format like `enforcement_actions_<year>_<month>.csv`.
+   - **Save** the DataFrame to a CSV file.
 
 9. **End Function**:
    - Print a confirmation message that data has been saved.
@@ -200,10 +200,7 @@ print(data.head())
 This structure uses a `while` loop to handle pagination dynamically and ensures the scraper stops early if it encounters data before the specified start date. 
 
 * b. Create Dynamic Scraper (PARTNER 2)
-The earliest was on January 3, 2023
-Category                           Criminal and Civil Actions
-Link        https://oig.hhs.gov/fraud/enforcement/podiatri...
-Agency      U.S. Attorney’s Office, Southern District of T...
+
 
 ```{python}
 from datetime import datetime
@@ -348,7 +345,7 @@ chart = alt.Chart(monthly_counts).mark_line().encode(
     tooltip=["Year_Month:T", "Count:Q"]
 ).properties(
     title="Number of Enforcement Actions Over Time (Aggregated by Month-Year)",
-    width=600,
+    width=400,
     height=400
 ).interactive()
 
@@ -384,7 +381,7 @@ category_chart = alt.Chart(monthly_category_counts).mark_line().encode(
     tooltip=["Year_Month:T", "Category", "Count"]
 ).properties(
     title="Enforcement Actions Over Time by Category",
-    width=600,
+    width=400,
     height=400
 ).interactive()
 
@@ -425,13 +422,11 @@ topic_chart = alt.Chart(monthly_topic_counts).mark_line().encode(
     tooltip=["Year_Month:T", "Category", "Count"]
 ).properties(
     title="Enforcement Actions Over Time by Topic",
-    width=600,
+    width=400,
     height=400
 ).interactive()
 
 topic_chart
-
-
 
 ```
 
@@ -442,7 +437,6 @@ topic_chart
 ```{python}
 
 ```
-
 
 ### 2. Map by District (PARTNER 2)
 
