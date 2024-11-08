@@ -436,6 +436,7 @@ topic_chart
 
 ```{python}
 
+
 ```
 
 ### 2. Map by District (PARTNER 2)
@@ -443,7 +444,7 @@ topic_chart
 ```{python}
 import geopandas as gpd
 import matplotlib.pyplot as plt
-import re
+import pandas as pd
 
 # Load the enforcement actions data
 data = pd.read_csv("enforcement_actions_2021_1.csv")
@@ -473,17 +474,16 @@ district_map_data = district_shapefile.merge(district_counts, left_on="cleaned_j
 # Fill NaN values in the 'Count' column with 0 for districts with no actions
 district_map_data["Count"].fillna(0, inplace=True)
 
+# Check if Alaska is present in the merged data
+print("Merged data sample:")
+print(district_map_data[district_map_data["judicial_d"].str.contains("Alaska", na=False)].head())
 
-# Plot the choropleth map with focus on continental U.S.
-fig, ax = plt.subplots(1, 1, figsize=(12, 8))
-district_map_data.plot(column="Count", cmap="Reds", linewidth=0.8, ax=ax, edgecolor="0.8", legend=True,
-                       legend_kwds={"label": "Number of Enforcement Actions",
-                                    "orientation": "horizontal"})
-
-# Set axis limits to focus on the continental U.S.
-ax.set_xlim([-130, -60])  # Longitude range for continental U.S.
-ax.set_ylim([20, 55])     # Latitude range for continental U.S.
-
+# Plot without axis limits to see all areas
+fig, ax = plt.subplots(1, 1, figsize=(14, 10))
+district_map_data.to_crs("EPSG:2163").plot(  # Albers Equal Area projection for the US
+    column="Count", cmap="Reds", linewidth=0.5, ax=ax, edgecolor="0.8", legend=True,
+    legend_kwds={"label": "Number of Enforcement Actions", "orientation": "horizontal"}
+)
 ax.set_title("Number of Enforcement Actions by US Attorney Districts", fontsize=15)
 plt.show()
 ```
@@ -491,7 +491,37 @@ plt.show()
 ## Extra Credit
 
 ### 1. Merge zip code shapefile with population
+
 ```{python}
+# Load the population data
+population_data_path = "DECENNIALDHC2020.P1_2024-11-08T134537\DECENNIALDHC2020.P1-Data.csv"  # Replace with the actual path
+population_df = pd.read_csv(population_data_path)
+
+# Check the first few rows
+print(population_df.head())
+
+# Ensure `ZIP_Code` is formatted as a string (if necessary)
+population_df["ZIP_Code"] = population_df["GEO_ID"].str.extract(r'(\d{5})')[0]
+population_df["Population"] = pd.to_numeric(population_df["P1_001N"], errors="coerce")
+
+# Drop rows with missing ZIP codes or population data
+population_df = population_df.dropna(subset=["ZIP_Code", "Population"])
+
+# Load the ZIP code shapefile
+zip_shapefile_path = "gz_2010_us_860_00_500k\gz_2010_us_860_00_500k.shp"  # Replace with the actual path
+zip_gdf = gpd.read_file(zip_shapefile_path)
+
+
+# Rename the ZIP column in the shapefile data for consistency
+zip_gdf = zip_gdf.rename(columns={"ZCTA5": "ZIP_Code"}) 
+ # Adjust this if your column name is different
+
+# Merge population data with ZIP code shapefile on ZIP_Code
+merged_gdf = zip_gdf.merge(population_df[['ZIP_Code', 'Population']], on="ZIP_Code", how="left")
+
+# Check merged data
+print(merged_gdf.head())
+
 
 ```
 
