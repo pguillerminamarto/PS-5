@@ -474,9 +474,6 @@ district_map_data = district_shapefile.merge(district_counts, left_on="cleaned_j
 # Fill NaN values in the 'Count' column with 0 for districts with no actions
 district_map_data["Count"].fillna(0, inplace=True)
 
-# Check if Alaska is present in the merged data
-print("Merged data sample:")
-print(district_map_data[district_map_data["judicial_d"].str.contains("Alaska", na=False)].head())
 
 # Plot without axis limits to see all areas
 fig, ax = plt.subplots(1, 1, figsize=(14, 10))
