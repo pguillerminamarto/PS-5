@@ -321,6 +321,7 @@ print(earliest_action)
 ```{python}
 import altair as alt
 
+# Assuming your data is loaded as 'data' and processed similarly
 data = pd.read_csv("enforcement_actions_2021_1.csv")
 
 # Convert 'Date' column to datetime format to enable time-based operations
@@ -338,15 +339,15 @@ monthly_counts = data.groupby("Year_Month").size().reset_index(name="Count")
 # Convert Year_Month to datetime for Altair plotting
 monthly_counts["Year_Month"] = monthly_counts["Year_Month"].dt.to_timestamp()
 
-# Plot the line chart using Altair
+# Plot the line chart using Altair with improved tick formatting
 chart = alt.Chart(monthly_counts).mark_line().encode(
-    x=alt.X("Year_Month:T", title="Month and Year"),
+    x=alt.X("Year_Month:T", title="Month and Year", axis=alt.Axis(format="%Y-%m")),
     y=alt.Y("Count:Q", title="Number of Enforcement Actions"),
     tooltip=["Year_Month:T", "Count:Q"]
 ).properties(
     title="Number of Enforcement Actions Over Time (Aggregated by Month-Year)",
-    width=400,
-    height=400
+    width=300,
+    height=300
 ).interactive()
 
 chart
@@ -359,6 +360,18 @@ chart
 
 ```{python}
 
+# Assuming your data is loaded as 'data' and processed similarly
+data = pd.read_csv("enforcement_actions_2021_1.csv")
+
+# Convert 'Date' column to datetime format
+data["Date"] = pd.to_datetime(data["Date"], errors="coerce")
+
+# Drop rows with NaT in Date (if any)
+data = data.dropna(subset=["Date"])
+
+# Extract month-year for aggregation
+data["Year_Month"] = data["Date"].dt.to_period("M")
+
 # Filter for specific categories
 categories_of_interest = ["Criminal and Civil Actions", "State Enforcement Agencies"]
 filtered_data = data[data["Category"].isin(categories_of_interest)]
@@ -370,19 +383,19 @@ monthly_category_counts = (
     .reset_index(name="Count")
 )
 
-# Convert Year_Month to datetime for plotting
+# Convert Year_Month to datetime for Altair plotting
 monthly_category_counts["Year_Month"] = monthly_category_counts["Year_Month"].dt.to_timestamp()
 
-# Plot the line chart by category
+# Plot the line chart by category with improved tick formatting
 category_chart = alt.Chart(monthly_category_counts).mark_line().encode(
-    x=alt.X("Year_Month:T", title="Month and Year"),
+    x=alt.X("Year_Month:T", title="Month and Year", axis=alt.Axis(format="%Y-%m")),
     y=alt.Y("Count:Q", title="Number of Enforcement Actions"),
-    color="Category",
+    color=alt.Color("Category", legend=alt.Legend(orient="bottom")),
     tooltip=["Year_Month:T", "Category", "Count"]
 ).properties(
     title="Enforcement Actions Over Time by Category",
-    width=400,
-    height=400
+    width=300,
+    height=300
 ).interactive()
 
 category_chart
@@ -430,21 +443,120 @@ topic_chart
 
 ```
 
+
+```{python}
+# Assuming your data is processed as shown earlier
+data = pd.read_csv("enforcement_actions_2021_1.csv")
+
+# Convert 'Date' column to datetime format
+data["Date"] = pd.to_datetime(data["Date"], errors="coerce")
+data = data.dropna(subset=["Date"])
+data["Year_Month"] = data["Date"].dt.to_period("M")
+
+# Filter and assign topics
+categories_of_interest = ["Criminal and Civil Actions"]
+filtered_data = data[data["Category"] == "Criminal and Civil Actions"]
+
+def assign_topic(title):
+    title = title.lower()
+    if any(keyword in title for keyword in ["health", "medical", "hospital", "clinic", "insurance", "medicare", "medicaid", "patient", "pharmaceutical", "doctor", "nurse"]):
+        return "Health Care Fraud"
+    elif any(keyword in title for keyword in ["bank", "financial", "investment", "securities", "loan", "mortgage", "credit", "fund", "money laundering", "asset", "accounting", "tax", "ponzi", "scheme"]):
+        return "Financial Fraud"
+    elif any(keyword in title for keyword in ["drug", "narcotic", "opioid", "cocaine", "heroin", "methamphetamine", "prescription", "pharmacy", "substance abuse", "dea"]):
+        return "Drug Enforcement"
+    elif any(keyword in title for keyword in ["bribery", "corruption", "kickback", "lobbying", "graft", "illegal payment", "under the table", "influence", "official", "misconduct", "embezzlement"]):
+        return "Bribery/Corruption"
+    else:
+        return "Other"
+
+filtered_data["Topic"] = filtered_data["Title"].apply(assign_topic)
+
+# Group by month-year and topic
+monthly_topic_counts = (
+    filtered_data.groupby(["Year_Month", "Topic"])
+    .size()
+    .reset_index(name="Count")
+)
+monthly_topic_counts["Year_Month"] = monthly_topic_counts["Year_Month"].dt.to_timestamp()
+
+# Plot with adjustments for axes
+topic_chart = alt.Chart(monthly_topic_counts).mark_line().encode(
+    x=alt.X("Year_Month:T", title="Month and Year", axis=alt.Axis(format="%Y-%m", labelAngle=-45)),
+    y=alt.Y("Count:Q", title="Number of Enforcement Actions", scale=alt.Scale(domain=(0, 35))),
+    color=alt.Color("Topic", legend=alt.Legend(orient="bottom")),
+    tooltip=["Year_Month:T", "Topic", "Count"]
+).properties(
+    title="Enforcement Actions Over Time by Topic (Criminal and Civil Actions)",
+    width=600,
+    height=400
+).configure_axisX(
+    labelFontSize=10
+).interactive()
+
+topic_chart
+
+```
+
+
+
 ## Step 4: Create maps of enforcement activity
 
 ### 1. Map by State (PARTNER 1)
 
 ```{python}
 
+import geopandas as gpd
+import matplotlib.pyplot as plt
+
+# Load the enforcement actions data
+data = pd.read_csv("enforcement_actions_2021_1.csv")
+
+# Update the path to the .shp file with either double backslashes or a raw string
+#shapefile_path = r'US Attorney Districts Shapefile simplified_20241105\geo_export_863694bc-2e85-424f-96a2-1598bf583e4c.shp'
+
+shapefile_path_us = r'US Attorney Districts Shapefile simplified_20241108/geo_export_f7b8e2a6-7a91-4743-8cde-a71cb95af3e2.shp'
+
+shapefile_path_census = r'cb_2018_us_state_500k/cb_2018_us_state_500k.shp'
+
+# Load the shapefiles
+district_shapefile = gpd.read_file(shapefile_path_us)
+census_shapefile = gpd.read_file(shapefile_path_census)
+
+# Filter for state-level actions and extract state names
+state_level_enforcements = data[data['Agency'].str.contains("State of", na=False)]
+state_level_enforcements['State'] = state_level_enforcements['Agency'].str.extract(r'State of (\w+)')
+
+# Count the number of enforcement actions per state
+state_counts = state_level_enforcements['State'].value_counts().reset_index()
+state_counts.columns = ['State', 'Enforcement_Actions']
+
+# Remove Alaska, Hawaii, and other territories
+census_shapefile = census_shapefile.rename(columns={'NAME': 'State'})
+
+# Merge the enforcement counts with the census shapefile
+merged = census_shapefile.merge(state_counts, on='State', how='left')
+merged['Enforcement_Actions'] = merged['Enforcement_Actions'].fillna(0)
+
+# Plot the choropleth map with axis limits focused on the contiguous U.S.
+fig, ax = plt.subplots(1, 1, figsize=(12, 8))
+merged.plot(column='Enforcement_Actions', cmap='OrRd', linewidth=0.8, ax=ax, edgecolor='0.8', legend=True)
+ax.set_title("Number of Enforcement Actions by State")
+
+# Set axis limits to focus on the contiguous U.S.
+ax.set_xlim(-130, -65)  
+ax.set_ylim(24, 50)    
+
+plt.show()
 
 ```
 
 ### 2. Map by District (PARTNER 2)
 
 ```{python}
-import geopandas as gpd
-import matplotlib.pyplot as plt
-import pandas as pd
+# Load the shapefile
+district_shapefile = gpd.read_file(shapefile_path_us)
+census_shapefile = gpd.read_file(shapefile_path_census)
 
 # Load the enforcement actions data
 data = pd.read_csv("enforcement_actions_2021_1.csv")
@@ -459,11 +571,9 @@ district_data["District"] = district_data["Agency"].apply(lambda x: ' '.join(x.s
 district_counts = district_data["District"].value_counts().reset_index()
 district_counts.columns = ["District", "Count"]
 
-# Update the path to the .shp file with either double backslashes or a raw string
-shapefile_path = r'US Attorney Districts Shapefile simplified_20241105\geo_export_863694bc-2e85-424f-96a2-1598bf583e4c.shp'
-
-# Load the shapefile using GeoPandas
-district_shapefile = gpd.read_file(shapefile_path)
+# Remove Alaska, Hawaii, and other territories
+census_shapefile = census_shapefile.rename(columns={'NAME': 'State'})
+census_shapefile = census_shapefile[~census_shapefile['State'].isin(['Alaska', 'Hawaii'])]
 
 # Remove the first word from each entry in the judicial_d column
 district_shapefile["cleaned_judicial_d"] = district_shapefile["judicial_d"].apply(lambda x: ' '.join(x.split()[1:]))
@@ -474,7 +584,6 @@ district_map_data = district_shapefile.merge(district_counts, left_on="cleaned_j
 # Fill NaN values in the 'Count' column with 0 for districts with no actions
 district_map_data["Count"].fillna(0, inplace=True)
 
-
 # Plot without axis limits to see all areas
 fig, ax = plt.subplots(1, 1, figsize=(14, 10))
 district_map_data.to_crs("EPSG:2163").plot(  # Albers Equal Area projection for the US
@@ -482,6 +591,7 @@ district_map_data.to_crs("EPSG:2163").plot(  # Albers Equal Area projection for 
     legend_kwds={"label": "Number of Enforcement Actions", "orientation": "horizontal"}
 )
 ax.set_title("Number of Enforcement Actions by US Attorney Districts", fontsize=15)
+
 plt.show()
 ```
 
