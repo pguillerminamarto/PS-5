@@ -601,7 +601,9 @@ plt.show()
 
 ```{python}
 # Load the population data
-population_data_path = "DECENNIALDHC2020.P1_2024-11-08T134537\DECENNIALDHC2020.P1-Data.csv"  # Replace with the actual path
+#population_data_path = "DECENNIALDHC2020.P1_2024-11-08T134537\DECENNIALDHC2020.P1-Data.csv" 
+
+population_data_path = "DECENNIALDHC2020.P1_2024-11-10T141341/DECENNIALDHC2020.P1-Data.csv"
 population_df = pd.read_csv(population_data_path)
 
 # Check the first few rows
@@ -615,9 +617,9 @@ population_df["Population"] = pd.to_numeric(population_df["P1_001N"], errors="co
 population_df = population_df.dropna(subset=["ZIP_Code", "Population"])
 
 # Load the ZIP code shapefile
-zip_shapefile_path = "gz_2010_us_860_00_500k\gz_2010_us_860_00_500k.shp"  # Replace with the actual path
+#zip_shapefile_path = "gz_2010_us_860_00_500k\gz_2010_us_860_00_500k.shp"  
+zip_shapefile_path = "gz_2010_us_860_00_500k/gz_2010_us_860_00_500k.shp" 
 zip_gdf = gpd.read_file(zip_shapefile_path)
-
 
 # Rename the ZIP column in the shapefile data for consistency
 zip_gdf = zip_gdf.rename(columns={"ZCTA5": "ZIP_Code"}) 
@@ -629,15 +631,97 @@ merged_gdf = zip_gdf.merge(population_df[['ZIP_Code', 'Population']], on="ZIP_Co
 # Check merged data
 print(merged_gdf.head())
 
-
 ```
 
 ### 2. Conduct spatial join
 ```{python}
+# Ensure both GeoDataFrames (merged_gdf and district_shapefile) are in the same CRS
+merged_gdf = merged_gdf.to_crs(district_shapefile.crs)
+
+# Perform a spatial join between ZIP codes and districts
+zip_district_join = gpd.sjoin(merged_gdf, district_shapefile, how="inner", predicate="intersects")
+
+print(zip_district_join.columns)
+
+# Aggregate the population for each district
+population_by_district = zip_district_join.groupby("judicial_d")["Population"].sum().reset_index()
+
+# Check the aggregated data
+print(population_by_district.head())
 
 ```
 
 ### 3. Map the action ratio in each district
 ```{python}
+import re
+
+# Load enforcement actions data
+enforcement_data = pd.read_csv("enforcement_actions_2021_1.csv")
+
+# Convert 'Date' column to datetime format and filter for actions since January 2021
+enforcement_data["Date"] = pd.to_datetime(enforcement_data["Date"], errors="coerce")
+enforcement_data = enforcement_data[enforcement_data["Date"] >= "2021-01-01"]
+
+# Filter for district-level actions and extract district names with improved regex
+def extract_district_name(agency):
+    match = re.search(r"(Eastern|Western|Northern|Southern|Middle)?\s*District of\s+[A-Za-z\s]+", agency)
+    return match.group(0).strip() if match else agency
+
+# Apply the function to extract district names from 'Agency'
+enforcement_data["District"] = enforcement_data["Agency"].apply(extract_district_name)
+
+# Count the number of enforcement actions per district
+actions_per_district = enforcement_data["District"].value_counts().reset_index()
+actions_per_district.columns = ["judicial_d", "Enforcement_Actions"]
+
+# Load the population data and calculate the population per district
+population_data_path = "DECENNIALDHC2020.P1_2024-11-10T141341/DECENNIALDHC2020.P1-Data.csv"
+population_df = pd.read_csv(population_data_path)
+
+# Extract ZIP code and population, ensuring 'ZIP_Code' is a string
+population_df["ZIP_Code"] = population_df["GEO_ID"].str.extract(r'(\d{5})')[0]
+population_df["Population"] = pd.to_numeric(population_df["P1_001N"], errors="coerce")
+population_df = population_df.dropna(subset=["ZIP_Code", "Population"])
+
+# Load the ZIP code shapefile and merge with population data
+zip_shapefile_path = "gz_2010_us_860_00_500k/gz_2010_us_860_00_500k.shp"
+zip_gdf = gpd.read_file(zip_shapefile_path)
+zip_gdf = zip_gdf.rename(columns={"ZCTA5": "ZIP_Code"})
+
+# Merge population data with ZIP code shapefile on ZIP_Code
+merged_gdf = zip_gdf.merge(population_df[['ZIP_Code', 'Population']], on="ZIP_Code", how="left")
+
+# Load the district shapefile
+district_shapefile_path = r'US Attorney Districts Shapefile simplified_20241108/geo_export_f7b8e2a6-7a91-4743-8cde-a71cb95af3e2.shp'
+district_shapefile = gpd.read_file(district_shapefile_path)
+
+# Ensure both GeoDataFrames are in the same CRS
+merged_gdf = merged_gdf.to_crs(district_shapefile.crs)
+
+# Perform a spatial join between ZIP codes and districts
+zip_district_join = gpd.sjoin(merged_gdf, district_shapefile, how="inner", predicate="intersects")
+
+# Aggregate the population for each district
+population_by_district = zip_district_join.groupby("judicial_d")["Population"].sum().reset_index()
+
+# Merge enforcement actions with population data
+district_ratios = actions_per_district.merge(population_by_district, on="judicial_d", how="left")
+
+# Calculate the ratio of enforcement actions per capita (per population)
+district_ratios["Enforcement_Ratio"] = district_ratios["Enforcement_Actions"] / district_ratios["Population"]
+
+# Merge with the district shapefile for mapping
+district_map_data = district_shapefile.merge(district_ratios, on="judicial_d", how="left")
+
+# Plot the choropleth map
+fig, ax = plt.subplots(1, 1, figsize=(14, 10))
+district_map_data.to_crs("EPSG:2163").plot(
+    column="Enforcement_Ratio", cmap="Blues", linewidth=0.5, ax=ax, edgecolor="0.8", legend=True,
+    legend_kwds={"label": "Enforcement Actions per Capita", "orientation": "horizontal"}
+)
+ax.set_title("Ratio of Enforcement Actions per Population by US Attorney District", fontsize=15)
+
+plt.show()
+
 
 ```
